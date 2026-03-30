@@ -136,6 +136,34 @@ if st.sidebar.button("🚀 시각화 시작"):
         except Exception as e: st.error(f"에러: {e}")
 
 # ================== 4. 시각화 영역 ==================
+
+if st.session_state.final_df is not None:
+    vis_df = st.session_state.final_df.sort_values('time_sec').reset_index(drop=True)
+    
+    # ------------------ [추가된 부분] 다운로드 버튼 ------------------
+    st.subheader("💾 전처리 완료 데이터 다운로드")
+    # DataFrame을 CSV 문자열로 변환 (한글 깨짐 방지를 위해 utf-8-sig 사용)
+    csv_data = vis_df.to_csv(index=False).encode('utf-8-sig')
+    
+    st.download_button(
+        label="📥 통합 데이터 CSV로 다운로드하기",
+        data=csv_data,
+        file_name="preprocessed_sensor_data.csv",
+        mime="text/csv"
+    )
+    st.divider() # 화면 구분을 위한 얇은 가로선 추가
+    # -----------------------------------------------------------------
+    
+    plot_configs = {
+        "BVP Pulse": ("BVP_BVP_mean", "#FF4B4B"),
+        "HRV RMSSD": ("BVP_RMSSD_60s", "#B22222"),
+        "EDA Tonic": ("EDA_EDA_mean", "#FF8C00"),
+        "EDA Phasic": ("EDA_Phasic_Mean_60s", "#FFA500"),
+        "Movement": ("ACC_MAG_mean", "#28A745"),
+        "Temperature": ("TEMP_TEMP_mean", "#FFD700")
+    }
+    
+
 if st.session_state.final_df is not None:
     vis_df = st.session_state.final_df.sort_values('time_sec').reset_index(drop=True)
     
