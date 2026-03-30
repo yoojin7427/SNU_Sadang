@@ -4,7 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy import signal
-import neurokit2 as nk  # 추가된 부분
+import neurokit2 as nk
 
 # ================== 캐싱 설정 ==================
 @st.cache_data
@@ -53,10 +53,8 @@ def extract_hrv_from_signal(values, fs, prefix):
 def extract_eda_60s(df_win, fs=4):
     try:
         raw = pd.to_numeric(df_win.iloc[:, 0], errors='coerce').dropna().values
-        # 데이터 길이가 너무 짧으면 처리하지 않음
         if len(raw) < fs * 5: 
-            return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0}
-            
+            return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0, "EDA_Phasic_Mean_60s": 0} # 딕셔너리 키 추가
         raw = winsorize_signal(raw, 1, 99)
         
         # 1. NeuroKit2를 이용한 노이즈 클리닝 (권장)
@@ -68,14 +66,15 @@ def extract_eda_60s(df_win, fs=4):
         
         phasic = eda_decomposed["EDA_Phasic"].values
         
-        # 기존과 동일한 형태의 딕셔너리로 반환
+        # 기존과 동일한 형태의 딕셔너리에 'EDA_Phasic_Mean_60s' 키 추가
         return {
             "EDA_Mean_60s": np.mean(cleaned), 
-            "EDA_Phasic_Max_60s": np.max(phasic)
+            "EDA_Phasic_Max_60s": np.max(phasic),
+            "EDA_Phasic_Mean_60s": np.mean(phasic) # 평균 Phasic 값 추가
         }
     except Exception as e: 
         # 디버깅을 원하시면 여기에 print(e)를 추가하세요
-        return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0}
+        return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0, "EDA_Phasic_Mean_60s": 0}
 
 # ================== 3. 메인 UI ==================
 st.set_page_config(page_title="센서 데이터 시각화", layout="wide")
@@ -144,7 +143,7 @@ if st.session_state.final_df is not None:
         "BVP Pulse": ("BVP_BVP_mean", "#FF4B4B"),
         "HRV RMSSD": ("BVP_RMSSD_60s", "#B22222"),
         "EDA Tonic": ("EDA_EDA_mean", "#FF8C00"),
-        "EDA Phasic": ("EDA_Phasic_Max_60s", "#FFA500"),
+        "EDA Phasic": ("EDA_Phasic_Mean_60s", "#FFA500"), # Phasic Max를 Phasic Mean으로 변경
         "Movement": ("ACC_MAG_mean", "#28A745"),
         "Temperature": ("TEMP_TEMP_mean", "#FFD700")
     }
@@ -166,15 +165,17 @@ if st.session_state.final_df is not None:
                 # 모든 행에 음영 추가 (add_shape은 row/col을 정식 지원)
                 for r in range(1, len(selected) + 1):
                     fig.add_shape(type="rect", x0=s_time, x1=e_time, y0=0, y1=1,
-                                  xref=f"x{r if r > 1 else ''}", yref=f"y{r if r > 1 else ''} domain",
-                                  fillcolor="gray", opacity=0.2, line_width=0, layer="below")
+                                xref=f"x{r if r > 1 else ''}", yref=f"y{r if r > 1 else ''} domain",
+                                fillcolor="gray", opacity=0.2, line_width=0, layer="below")
 
         for i, key in enumerate(selected, 1):
             col, color = plot_configs[key]
-            fig.add_trace(go.Scattergl(x=vis_df['time_sec'], y=vis_df[col], name=key, line=dict(color=color, width=1.5),
-                                       hovertemplate='시간: %{x|%H:%M:%S}<br>값: %{y:.2f}<extra></extra>'), row=i, col=1)
-            # 모든 행의 시간축 표시
-            fig.update_xaxes(showticklabels=True, tickformat="%H:%M:%S", row=i, col=1)
+            # 컬럼명이 데이터프레임에 존재하는지 확인 (예외 처리)
+            if col in vis_df.columns:
+                fig.add_trace(go.Scattergl(x=vis_df['time_sec'], y=vis_df[col], name=key, line=dict(color=color, width=1.5),
+                                            hovertemplate='시간: %{x|%H:%M:%S}<br>값: %{y:.2f}<extra></extra>'), row=i, col=1)
+                # 모든 행의 시간축 표시
+                fig.update_xaxes(showticklabels=True, tickformat="%H:%M:%S", row=i, col=1)
 
         fig.update_layout(height=250*len(selected), hovermode="x unified", showlegend=False, template="plotly_white")
         st.plotly_chart(fig, use_container_width=True)
