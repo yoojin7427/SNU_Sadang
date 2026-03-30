@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from scipy import signal
+import neurokit2 as nk  # 추가된 부분
 
 # ================== 캐싱 설정 ==================
 @st.cache_data
@@ -52,15 +53,29 @@ def extract_hrv_from_signal(values, fs, prefix):
 def extract_eda_60s(df_win, fs=4):
     try:
         raw = pd.to_numeric(df_win.iloc[:, 0], errors='coerce').dropna().values
-        if len(raw) < fs * 5: return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0}
+        # 데이터 길이가 너무 짧으면 처리하지 않음
+        if len(raw) < fs * 5: 
+            return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0}
+            
         raw = winsorize_signal(raw, 1, 99)
-        b, a = signal.butter(4, 1.0/(fs/2), btype="low")
-        clean = signal.filtfilt(b, a, raw)
-        b_t, a_t = signal.butter(4, 0.05/(fs/2), btype="low")
-        tonic = signal.filtfilt(b_t, a_t, clean)
-        ph = np.maximum(0, clean - tonic)
-        return {"EDA_Mean_60s": np.mean(clean), "EDA_Phasic_Max_60s": np.max(ph)}
-    except: return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0}
+        
+        # 1. NeuroKit2를 이용한 노이즈 클리닝 (권장)
+        cleaned = nk.eda_clean(raw, sampling_rate=fs, method='neurokit')
+        
+        # 2. NeuroKit2를 이용한 Tonic / Phasic 분리
+        # eda_phasic은 'EDA_Tonic'과 'EDA_Phasic' 컬럼을 가진 DataFrame을 반환합니다.
+        eda_decomposed = nk.eda_phasic(cleaned, sampling_rate=fs)
+        
+        phasic = eda_decomposed["EDA_Phasic"].values
+        
+        # 기존과 동일한 형태의 딕셔너리로 반환
+        return {
+            "EDA_Mean_60s": np.mean(cleaned), 
+            "EDA_Phasic_Max_60s": np.max(phasic)
+        }
+    except Exception as e: 
+        # 디버깅을 원하시면 여기에 print(e)를 추가하세요
+        return {"EDA_Mean_60s": 0, "EDA_Phasic_Max_60s": 0}
 
 # ================== 3. 메인 UI ==================
 st.set_page_config(page_title="센서 데이터 시각화", layout="wide")
